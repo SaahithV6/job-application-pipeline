@@ -4,6 +4,7 @@ Ties together all modules for the daily automated job application cycle.
 """
 
 import json
+import subprocess
 import sys
 import os
 from datetime import datetime
@@ -14,6 +15,9 @@ from apply import apply_to_jobs
 from monitor import monitor_emails
 from calendar_ops import process_interviews, create_offer_deadline_event
 from interview_prep import process_interview_replies
+
+REPLIT_DASHBOARD_URL = os.environ.get("REPLIT_DASHBOARD_URL", "")
+SYNC_API_KEY = os.environ.get("SYNC_API_KEY", "pipeline-sync-key-change-me")
 
 
 def run_discovery_and_apply(dry_run=False):
@@ -136,7 +140,39 @@ def run_full_pipeline(dry_run=False):
     print(f"Applied today: {stats['today']}/{stats['max_per_day']}")
 
     results["stats"] = stats
+
+    # Sync results to Replit dashboard
+    print("\nSyncing to Replit dashboard...")
+    try:
+        sync_to_replit()
+    except Exception as e:
+        print(f"  Sync error: {e}")
+
     return results
+
+
+def sync_to_replit():
+    """Push all local application data to the Replit-hosted dashboard."""
+    if not REPLIT_DASHBOARD_URL:
+        print("  No REPLIT_DASHBOARD_URL set, skipping sync")
+        return
+    apps = db.list_applications(limit=500)
+    if not apps:
+        return
+    url = f"{REPLIT_DASHBOARD_URL.rstrip('/')}/api/sync/bulk"
+    payload = json.dumps({"applications": apps})
+    cmd = [
+        "curl", "-s", "-X", "POST", url,
+        "-H", "Content-Type: application/json",
+        "-H", f"X-Sync-Key: {SYNC_API_KEY}",
+        "-d", payload,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        resp = json.loads(result.stdout) if result.stdout else {}
+        print(f"  Synced {resp.get('synced', 0)} applications to Replit dashboard")
+    except Exception as e:
+        print(f"  Sync failed: {e}")
 
 
 def run_monitor_only():

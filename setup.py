@@ -26,7 +26,13 @@ def run_pokee_skill(skill_call, params=None, timeout=660):
     if not output:
         return {"success": False, "error": result.stderr.strip() or "No output"}
     try:
-        return json.loads(output)
+        parsed = json.loads(output)
+        if "data" in parsed and isinstance(parsed["data"], dict):
+            inner = parsed["data"]
+            if inner.get("success") is None and parsed.get("status") == "success":
+                inner["success"] = True
+            return inner
+        return parsed
     except json.JSONDecodeError:
         return {"success": False, "error": output[:500]}
 

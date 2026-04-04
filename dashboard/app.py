@@ -145,6 +145,89 @@ def api_upload_resume():
     return jsonify({"success": True, "path": filepath, "filename": filename})
 
 
+# ── Sync API (used by the Pokee pipeline to push data to the Replit dashboard) ──
+
+SYNC_KEY = os.environ.get("SYNC_API_KEY", "pipeline-sync-key-change-me")
+
+
+def _check_sync_key():
+    key = request.headers.get("X-Sync-Key") or request.args.get("key")
+    return key == SYNC_KEY
+
+
+@app.route("/api/sync/application", methods=["POST"])
+def api_sync_application():
+    """Receive an application record from the pipeline and upsert it."""
+    if not _check_sync_key():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data"}), 400
+    # Check if already exists by job_url
+    job_url = data.get("job_url", "")
+    if job_url and db.is_duplicate(job_url):
+        # Update existing
+        with db.get_db() as conn:
+            row = conn.execute("SELECT id FROM applications WHERE job_url = ?", (job_url,)).fetchone()
+            if row:
+                db.update_application(row["id"], **{k: v for k, v in data.items()
+                                                     if k in ("status", "notes", "interview_date",
+                                                              "interview_link", "calendar_event_id")})
+                return jsonify({"success": True, "action": "updated", "id": row["id"]})
+    # Insert new
+    app_id = db.add_application(
+        company=data.get("company", "Unknown"),
+        role=data.get("role", "Unknown"),
+        job_url=job_url,
+        apply_url=data.get("apply_url", ""),
+        notes=data.get("notes", ""),
+        browser_session_id=data.get("browser_session_id"),
+        browser_live_url=data.get("browser_live_url"),
+    )
+    if data.get("status") and data["status"] != "applied":
+        db.update_application(app_id, status=data["status"])
+    if data.get("date_applied"):
+        with db.get_db() as conn:
+            conn.execute("UPDATE applications SET date_applied = ? WHERE id = ?",
+                         (data["date_applied"], app_id))
+    return jsonify({"success": True, "action": "created", "id": app_id})
+
+
+@app.route("/api/sync/bulk", methods=["POST"])
+def api_sync_bulk():
+    """Receive multiple application records at once."""
+    if not _check_sync_key():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json()
+    applications = data.get("applications", [])
+    results = []
+    for app_data in applications:
+        job_url = app_data.get("job_url", "")
+        if job_url and db.is_duplicate(job_url):
+            with db.get_db() as conn:
+                row = conn.execute("SELECT id FROM applications WHERE job_url = ?", (job_url,)).fetchone()
+                if row:
+                    db.update_application(row["id"], **{k: v for k, v in app_data.items()
+                                                         if k in ("status", "notes")})
+                    results.append({"action": "updated", "id": row["id"]})
+                    continue
+        app_id = db.add_application(
+            company=app_data.get("company", "Unknown"),
+            role=app_data.get("role", "Unknown"),
+            job_url=job_url,
+            apply_url=app_data.get("apply_url", ""),
+            notes=app_data.get("notes", ""),
+        )
+        if app_data.get("status") and app_data["status"] != "applied":
+            db.update_application(app_id, status=app_data["status"])
+        if app_data.get("date_applied"):
+            with db.get_db() as conn:
+                conn.execute("UPDATE applications SET date_applied = ? WHERE id = ?",
+                             (app_data["date_applied"], app_id))
+        results.append({"action": "created", "id": app_id})
+    return jsonify({"success": True, "synced": len(results), "results": results})
+
+
 if __name__ == "__main__":
     db.init_db()
     port = int(os.environ.get("PORT", 5000))

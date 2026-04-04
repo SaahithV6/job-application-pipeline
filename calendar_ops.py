@@ -18,7 +18,13 @@ def _pokee_skill(skill_call, params=None, timeout=660):
         cmd = f"pokee-skill {skill_call}"
     result = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=timeout)
     try:
-        return json.loads(result.stdout.strip())
+        parsed = json.loads(result.stdout.strip())
+        if "data" in parsed and isinstance(parsed["data"], dict):
+            inner = parsed["data"]
+            if inner.get("success") is None and parsed.get("status") == "success":
+                inner["success"] = True
+            return inner
+        return parsed
     except json.JSONDecodeError:
         return {"success": False, "error": result.stdout[:500] + result.stderr[:500]}
 
