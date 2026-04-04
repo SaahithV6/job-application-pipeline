@@ -7,10 +7,19 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for
+from werkzeug.utils import secure_filename
 import db
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "job-pipeline-secret-key-change-me")
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "txt"}
+
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 # ── Page Routes ──
@@ -118,6 +127,22 @@ def api_update_config():
         return jsonify({"error": "No data provided"}), 400
     db.set_config_bulk(data)
     return jsonify({"success": True, "config": db.get_config()})
+
+
+@app.route("/api/upload-resume", methods=["POST"])
+def api_upload_resume():
+    if "resume" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    file = request.files["resume"]
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+    if not allowed_file(file.filename):
+        return jsonify({"error": "File type not allowed. Use PDF, DOC, DOCX, or TXT"}), 400
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    file.save(filepath)
+    db.set_config("resume_path", filepath)
+    return jsonify({"success": True, "path": filepath, "filename": filename})
 
 
 if __name__ == "__main__":

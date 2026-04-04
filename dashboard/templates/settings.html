@@ -63,11 +63,32 @@
                     {% endfor %}
                 </select>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Resume Path</label>
-                <input type="text" name="resume_path" value="{{ config.get('resume_path', '') }}"
-                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500"
-                       placeholder="/path/to/resume.pdf">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Resume</label>
+                <div class="flex items-center space-x-4">
+                    <div class="flex-1">
+                        <div id="resume-drop-zone"
+                             class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors cursor-pointer">
+                            <input type="file" id="resume-file-input" accept=".pdf,.doc,.docx,.txt" class="hidden">
+                            <svg class="mx-auto h-10 w-10 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <p class="mt-2 text-sm text-gray-600">
+                                <span class="text-indigo-600 font-medium">Click to upload</span> or drag and drop
+                            </p>
+                            <p class="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, or TXT</p>
+                        </div>
+                    </div>
+                </div>
+                {% if config.get('resume_path') %}
+                <div id="resume-status" class="mt-2 flex items-center space-x-2 text-sm text-green-600">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                    <span>Resume uploaded: {{ config.get('resume_path', '').split('/')[-1] }}</span>
+                </div>
+                {% else %}
+                <div id="resume-status" class="mt-2 text-sm text-gray-400">No resume uploaded yet</div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -117,12 +138,44 @@
 
 {% block scripts %}
 <script>
+// Resume file upload
+const dropZone = document.getElementById('resume-drop-zone');
+const fileInput = document.getElementById('resume-file-input');
+const statusEl = document.getElementById('resume-status');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-indigo-500', 'bg-indigo-50'); });
+dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('border-indigo-500', 'bg-indigo-50'); });
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
+    if (e.dataTransfer.files.length) uploadResume(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadResume(fileInput.files[0]); });
+
+async function uploadResume(file) {
+    statusEl.innerHTML = '<span class="text-indigo-600">Uploading...</span>';
+    const formData = new FormData();
+    formData.append('resume', file);
+    try {
+        const resp = await fetch('/api/upload-resume', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (data.success) {
+            statusEl.innerHTML = '<svg class="w-4 h-4 inline text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg> <span class="text-green-600">Resume uploaded: ' + data.filename + '</span>';
+        } else {
+            statusEl.innerHTML = '<span class="text-red-600">Error: ' + data.error + '</span>';
+        }
+    } catch (err) {
+        statusEl.innerHTML = '<span class="text-red-600">Upload failed</span>';
+    }
+}
+
+// Settings form save
 document.getElementById('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const data = {};
     new FormData(form).forEach((value, key) => { data[key] = value; });
-    // Handle checkbox
     data.auto_reply_enabled = document.getElementById('auto-reply-toggle').checked ? 'true' : 'false';
 
     await apiCall('/api/config', {
