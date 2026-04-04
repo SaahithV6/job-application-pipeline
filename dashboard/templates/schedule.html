@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Schedule Interview - {{ app.company }} - Job Tracker{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/application/{{ app.id }}" class="text-sm text-indigo-600 hover:text-indigo-800">&larr; Back to Application</a>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Schedule Interview</h1>
+    <p class="text-gray-600 mt-1">{{ app.role }} at {{ app.company }}</p>
+
+    {% if app.notes %}
+    <div class="mt-4 p-3 bg-gray-50 rounded-md">
+        <p class="text-sm text-gray-600">{{ app.notes }}</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Select Your Available Times</h2>
+    <p class="text-sm text-gray-500 mb-6">Pick up to 5 time slots when you're available for the interview. We'll use Browser Use to interact with the scheduling link if one was provided.</p>
+
+    <div id="time-slots" class="space-y-3">
+        <div class="flex items-center space-x-3 time-slot-row">
+            <input type="date" class="slot-date rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+            <input type="time" class="slot-time rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500" value="09:00">
+            <span class="text-sm text-gray-400">to</span>
+            <input type="time" class="slot-end rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500" value="10:00">
+        </div>
+    </div>
+
+    <button onclick="addSlot()" class="mt-3 text-sm text-indigo-600 hover:text-indigo-800">+ Add another time slot</button>
+
+    <div class="mt-8 flex space-x-4">
+        <button onclick="submitTimes()" class="bg-indigo-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-indigo-700">
+            Submit Available Times
+        </button>
+        <a href="/application/{{ app.id }}" class="bg-gray-100 text-gray-700 px-6 py-2 rounded-md text-sm font-medium hover:bg-gray-200">
+            Cancel
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addSlot() {
+    const container = document.getElementById('time-slots');
+    if (container.children.length >= 5) {
+        alert('Maximum 5 time slots');
+        return;
+    }
+    const row = document.createElement('div');
+    row.className = 'flex items-center space-x-3 time-slot-row';
+    row.innerHTML = `
+        <input type="date" class="slot-date rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+        <input type="time" class="slot-time rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500" value="09:00">
+        <span class="text-sm text-gray-400">to</span>
+        <input type="time" class="slot-end rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500" value="10:00">
+        <button onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 text-sm">&times;</button>
+    `;
+    container.appendChild(row);
+}
+
+async function submitTimes() {
+    const rows = document.querySelectorAll('.time-slot-row');
+    const times = [];
+    rows.forEach(row => {
+        const date = row.querySelector('.slot-date').value;
+        const start = row.querySelector('.slot-time').value;
+        const end = row.querySelector('.slot-end').value;
+        if (date && start && end) {
+            times.push(`${date} ${start}-${end}`);
+        }
+    });
+
+    if (times.length === 0) {
+        alert('Please select at least one time slot');
+        return;
+    }
+
+    await apiCall('/api/applications/{{ app.id }}/schedule', {
+        method: 'POST',
+        body: JSON.stringify({ times }),
+    });
+
+    alert('Times submitted! The automation will handle scheduling.');
+    window.location = '/application/{{ app.id }}';
+}
+</script>
+{% endblock %}
