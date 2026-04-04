@@ -173,10 +173,20 @@ def discover_via_scraper(keywords=None, location=None, max_jobs=10):
 
     result = _pokee_skill("linkedin_scraper.scrape_linkedin_jobs_by_search_url", {
         "urls": [search_url],
-    })
+    }, timeout=300)
 
+    # Scraper is async via Bright Data — may need retries
     if not result.get("success"):
-        return {"success": False, "error": result.get("error", "Scraper failed"), "jobs": []}
+        error_msg = result.get("error", "")
+        if "still processing" in error_msg.lower() or "snapshot" in error_msg.lower():
+            # Retry once after waiting
+            print("  Scraper still processing, retrying in 30s...")
+            time.sleep(30)
+            result = _pokee_skill("linkedin_scraper.scrape_linkedin_jobs_by_search_url", {
+                "urls": [search_url],
+            }, timeout=300)
+        if not result.get("success"):
+            return {"success": False, "error": result.get("error", "Scraper failed"), "jobs": []}
 
     raw_jobs = result.get("jobs", [])
     jobs = []
@@ -195,11 +205,85 @@ def discover_via_scraper(keywords=None, location=None, max_jobs=10):
 
 # ── Strategy C: Gmail → LinkedIn Recommendation Emails ──
 
+def _extract_jobs_from_email(body, subject=""):
+    """Extract job title, company, location from a LinkedIn email body."""
+    jobs_found = []
+    # Pattern: "Job Title\nCompany Name\nLocation"
+    # LinkedIn emails have structured blocks like:
+    #   Software Engineering Intern\nGoogle\nMountain View, CA
+    lines = [l.strip() for l in body.split("\n") if l.strip()]
+    for i, line in enumerate(lines):
+        # Look for LinkedIn job view URLs and grab context around them
+        if "linkedin.com" in line and ("jobs/view" in line or "comm/jobs" in line):
+            url = re.search(r'https?://[^\s"<>]+linkedin\.com/[^\s"<>]+jobs[^\s"<>]+', line)
+            if not url:
+                continue
+            job_url = url.group(0)
+            # Look backwards for title/company (usually 1-3 lines before the URL)
+            title = ""
+            company = ""
+            location = ""
+            skip_phrases = ["saved job", "still available", "view job", "apply now",
+                            "top job picks", "jobs that match", "see all jobs",
+                            "based on your", "recommendations", "this email was"]
+            for j in range(max(0, i - 4), i):
+                candidate = lines[j]
+                if len(candidate) < 3 or candidate.startswith("http") or "@" in candidate:
+                    continue
+                if any(sp in candidate.lower() for sp in skip_phrases):
+                    continue
+                if not title and len(candidate) < 100:
+                    title = candidate
+                elif not company and len(candidate) < 80:
+                    company = candidate
+                elif not location and len(candidate) < 60:
+                    location = candidate
+            if title or company:
+                jobs_found.append({
+                    "job_title": title or "Unknown Role",
+                    "company": company or "Unknown Company",
+                    "location": location,
+                    "job_url": job_url.split("?")[0],  # Clean tracking params
+                    "apply_url": job_url.split("?")[0],
+                    "description": "",
+                })
+    # Also try subject line: "You may be a fit for Company's Role"
+    if not jobs_found and subject:
+        m = re.search(r"fit for (.+?)'s (.+?) role", subject, re.IGNORECASE)
+        if m:
+            company, role = m.group(1), m.group(2)
+            urls = re.findall(r'https?://[^\s"<>]*linkedin\.com/[^\s"<>]*jobs[^\s"<>]+', body)
+            if urls:
+                jobs_found.append({
+                    "job_title": role,
+                    "company": company,
+                    "location": "",
+                    "job_url": urls[0].split("?")[0],
+                    "apply_url": urls[0].split("?")[0],
+                    "description": "",
+                })
+        # "apply now to 'Role at Company'"
+        m = re.search(r"apply now to '(.+?) at (.+?)'", subject, re.IGNORECASE)
+        if m:
+            role, company = m.group(1), m.group(2)
+            urls = re.findall(r'https?://[^\s"<>]*linkedin\.com/[^\s"<>]*jobs[^\s"<>]+', body)
+            if urls:
+                jobs_found.append({
+                    "job_title": role,
+                    "company": company,
+                    "location": "",
+                    "job_url": urls[0].split("?")[0],
+                    "apply_url": urls[0].split("?")[0],
+                    "description": "",
+                })
+    return jobs_found
+
+
 def discover_via_gmail(max_jobs=10):
-    """Search Gmail for LinkedIn job recommendation emails and extract job links."""
+    """Search Gmail for LinkedIn job recommendation emails and extract job info."""
     result = _pokee_skill("gmail.get_latest_gmail_threads", {
-        "query": 'from:jobs-noreply@linkedin.com OR (from:linkedin.com subject:"jobs for you") newer_than:7d',
-        "count": 10,
+        "query": 'from:jobs-noreply@linkedin.com OR from:jobs-listings@linkedin.com newer_than:7d',
+        "count": 15,
     })
 
     if not result.get("success"):
@@ -209,47 +293,46 @@ def discover_via_gmail(max_jobs=10):
     if not threads:
         return {"success": False, "error": "No LinkedIn job emails found", "jobs": []}
 
-    # Extract job URLs from email bodies
-    job_urls = set()
+    # Extract jobs directly from email bodies (faster than scraping each URL)
+    jobs = []
+    seen_urls = set()
     for thread in threads:
+        subject = thread.get("gmail_thread_subject", "")
         messages = thread.get("gmail_thread_messages", [])
         for msg in messages:
             body = msg.get("gmail_message_body", "")
-            # Find LinkedIn job URLs
-            urls = re.findall(r'https?://(?:www\.)?linkedin\.com/(?:jobs|comm/jobs)/[^\s"<>]+', body)
-            job_urls.update(urls)
+            extracted = _extract_jobs_from_email(body, subject)
+            for job in extracted:
+                url = job.get("job_url", "")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    jobs.append(job)
+                    if len(jobs) >= max_jobs:
+                        break
+            if len(jobs) >= max_jobs:
+                break
+        if len(jobs) >= max_jobs:
+            break
 
-    if not job_urls:
-        return {"success": False, "error": "No job URLs found in emails", "jobs": []}
-
-    # Scrape the individual job URLs for details
-    urls_to_scrape = list(job_urls)[:max_jobs]
-    scrape_result = _pokee_skill("linkedin_scraper.scrape_linkedin_jobs_by_url", {
-        "urls": urls_to_scrape,
-    })
-
-    jobs = []
-    if scrape_result.get("success"):
-        for j in scrape_result.get("jobs", []):
-            jobs.append({
-                "job_title": j.get("title", j.get("job_title", "")),
-                "company": j.get("company", j.get("company_name", "")),
-                "location": j.get("location", ""),
-                "job_url": j.get("url", j.get("job_url", "")),
-                "apply_url": j.get("apply_url", j.get("url", "")),
-                "description": j.get("description", j.get("job_description", "")),
-            })
-    else:
-        # Fallback: just return the URLs without scraping
-        for url in urls_to_scrape:
-            jobs.append({
-                "job_title": "Unknown (from email)",
-                "company": "Unknown",
-                "location": "",
-                "job_url": url,
-                "apply_url": url,
-                "description": "",
-            })
+    # If we got jobs with titles from emails, try to enrich with scraper (non-blocking)
+    urls_to_scrape = [j["job_url"] for j in jobs if j["job_title"] == "Unknown Role"][:5]
+    if urls_to_scrape:
+        scrape_result = _pokee_skill("linkedin_scraper.scrape_linkedin_jobs_by_url", {
+            "urls": urls_to_scrape,
+        }, timeout=120)
+        if scrape_result.get("success"):
+            scraped_map = {}
+            for sj in scrape_result.get("jobs", []):
+                surl = sj.get("url", sj.get("job_url", ""))
+                if surl:
+                    scraped_map[surl] = sj
+            for job in jobs:
+                scraped = scraped_map.get(job["job_url"])
+                if scraped:
+                    job["job_title"] = scraped.get("title", job["job_title"])
+                    job["company"] = scraped.get("company", job["company"])
+                    job["location"] = scraped.get("location", job["location"])
+                    job["description"] = scraped.get("description", "")
 
     return {"success": len(jobs) > 0, "jobs": jobs, "source": "gmail"}
 
