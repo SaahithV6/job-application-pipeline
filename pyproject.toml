@@ -1,0 +1,11 @@
+[project]
+name = "job-application-tracker"
+version = "1.0.0"
+description = "Automated job application pipeline with browser automation, email monitoring, and interview tracking"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+]
+
+[tool.setuptools]
+packages = ["dashboard"]
