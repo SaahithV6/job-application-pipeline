@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Settings - Job Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
+
+<form id="settings-form" class="space-y-8">
+    <!-- Personal Info -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Personal Information</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <input type="text" name="user_name" value="{{ config.get('user_name', '') }}"
+                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" name="user_email" value="{{ config.get('user_email', '') }}"
+                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <input type="tel" name="user_phone" value="{{ config.get('user_phone', '') }}"
+                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">LinkedIn Profile URL</label>
+                <input type="url" name="linkedin_profile_url" value="{{ config.get('linkedin_profile_url', '') }}"
+                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500"
+                       placeholder="https://linkedin.com/in/yourname">
+            </div>
+        </div>
+    </div>
+
+    <!-- Pipeline Settings -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Pipeline Settings</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Max Applications Per Day</label>
+                <input type="number" name="max_applications_per_day" value="{{ config.get('max_applications_per_day', '5') }}"
+                       min="1" max="50"
+                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Ghosted Threshold (days)</label>
+                <input type="number" name="ghosted_threshold_days" value="{{ config.get('ghosted_threshold_days', '21') }}"
+                       min="7" max="90"
+                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+                <p class="text-xs text-gray-400 mt-1">Mark as ghosted after this many days with no response</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
+                <select name="user_timezone"
+                        class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+                    {% for tz in ['America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York',
+                                  'America/Phoenix', 'Pacific/Honolulu', 'America/Anchorage',
+                                  'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+                                  'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata',
+                                  'Australia/Sydney'] %}
+                    <option value="{{ tz }}" {% if config.get('user_timezone') == tz %}selected{% endif %}>{{ tz }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Resume Path</label>
+                <input type="text" name="resume_path" value="{{ config.get('resume_path', '') }}"
+                       class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500"
+                       placeholder="/path/to/resume.pdf">
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto-Reply Settings -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Interview Auto-Reply</h2>
+        <div class="flex items-center space-x-3">
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="auto_reply_enabled" id="auto-reply-toggle"
+                       {% if config.get('auto_reply_enabled', 'true') == 'true' %}checked{% endif %}
+                       class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-indigo-300
+                            rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white
+                            after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                            after:bg-white after:border-gray-300 after:border after:rounded-full
+                            after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+            <span class="text-sm text-gray-700">Automatically reply to interview invitations with confirmation and prep advice</span>
+        </div>
+    </div>
+
+    <!-- Work History (read-only from LinkedIn) -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Profile Data (from LinkedIn + Resume)</h2>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Work History</label>
+                <textarea name="work_history_summary" rows="4"
+                          class="w-full rounded-md border-gray-300 text-sm p-3 border focus:ring-indigo-500 focus:border-indigo-500">{{ config.get('work_history_summary', '') }}</textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Education</label>
+                <textarea name="education_summary" rows="3"
+                          class="w-full rounded-md border-gray-300 text-sm p-3 border focus:ring-indigo-500 focus:border-indigo-500">{{ config.get('education_summary', '') }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex justify-end">
+        <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-indigo-700">
+            Save Settings
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const data = {};
+    new FormData(form).forEach((value, key) => { data[key] = value; });
+    // Handle checkbox
+    data.auto_reply_enabled = document.getElementById('auto-reply-toggle').checked ? 'true' : 'false';
+
+    await apiCall('/api/config', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+    alert('Settings saved!');
+});
+</script>
+{% endblock %}
