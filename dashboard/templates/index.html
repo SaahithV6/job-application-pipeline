@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Job Tracker{% endblock %}
+
+{% block content %}
+<!-- Stats Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-gray-900">{{ stats.total }}</div>
+        <div class="text-xs text-gray-500 mt-1">Total</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-green-600">{{ stats.by_status.get('applied', 0) }}</div>
+        <div class="text-xs text-gray-500 mt-1">Applied</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-yellow-600">{{ stats.by_status.get('interview', 0) }}</div>
+        <div class="text-xs text-gray-500 mt-1">Interview</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ stats.by_status.get('offer', 0) }}</div>
+        <div class="text-xs text-gray-500 mt-1">Offers</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-red-600">{{ stats.by_status.get('rejected', 0) }}</div>
+        <div class="text-xs text-gray-500 mt-1">Rejected</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-gray-400">{{ stats.by_status.get('ghosted', 0) }}</div>
+        <div class="text-xs text-gray-500 mt-1">Ghosted</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-lg shadow p-4 mb-6">
+    <form method="GET" class="flex flex-wrap gap-4 items-center">
+        <div>
+            <select name="status" class="rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500"
+                    onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                <option value="applied" {% if status_filter == 'applied' %}selected{% endif %}>Applied</option>
+                <option value="interview" {% if status_filter == 'interview' %}selected{% endif %}>Interview</option>
+                <option value="offer" {% if status_filter == 'offer' %}selected{% endif %}>Offer</option>
+                <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+                <option value="ghosted" {% if status_filter == 'ghosted' %}selected{% endif %}>Ghosted</option>
+                <option value="self_schedule" {% if status_filter == 'self_schedule' %}selected{% endif %}>Self-Schedule</option>
+            </select>
+        </div>
+        <div class="flex-1">
+            <input type="text" name="search" placeholder="Search company or role..."
+                   value="{{ search or '' }}"
+                   class="w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500">
+        </div>
+        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm hover:bg-indigo-700">
+            Search
+        </button>
+        {% if status_filter or search %}
+        <a href="/" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Applications Table -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date Applied</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for app in applications %}
+            <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/application/{{ app.id }}'">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm font-medium text-gray-900">{{ app.company }}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="text-sm text-gray-900">{{ app.role }}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {{ app.date_applied[:10] if app.date_applied else 'N/A' }}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full status-{{ app.status }}">
+                        {% if app.status == 'applied' %}Applied
+                        {% elif app.status == 'ghosted' %}Ghosted
+                        {% elif app.status == 'rejected' %}Rejected
+                        {% elif app.status == 'interview' %}Interview
+                        {% elif app.status == 'offer' %}Offer
+                        {% elif app.status == 'self_schedule' %}Self-Schedule
+                        {% else %}{{ app.status }}{% endif %}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm" onclick="event.stopPropagation()">
+                    {% if app.job_url %}
+                    <a href="{{ app.job_url }}" target="_blank" class="text-indigo-600 hover:text-indigo-900 mr-3">Job</a>
+                    {% endif %}
+                    {% if app.status == 'self_schedule' %}
+                    <a href="/schedule/{{ app.id }}" class="text-purple-600 hover:text-purple-900 mr-3">Schedule</a>
+                    {% endif %}
+                    <button onclick="deleteApp({{ app.id }})" class="text-red-500 hover:text-red-700 text-xs">Delete</button>
+                </td>
+            </tr>
+            {% endfor %}
+            {% if not applications %}
+            <tr>
+                <td colspan="5" class="px-6 py-12 text-center text-gray-500">
+                    No applications found. The pipeline will start adding them automatically.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function deleteApp(id) {
+    if (!confirm('Delete this application?')) return;
+    await apiCall(`/api/applications/${id}`, { method: 'DELETE' });
+    window.location.reload();
+}
+</script>
+{% endblock %}
