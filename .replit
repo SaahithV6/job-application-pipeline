@@ -1,4 +1,4 @@
-run = "python3 dashboard/app.py"
+run = "pip install flask && python3 dashboard/app.py"
 entrypoint = "dashboard/app.py"
 
 [env]
@@ -9,7 +9,7 @@ SECRET_KEY = "change-this-to-a-real-secret-key"
 channel = "stable-24_05"
 
 [deployment]
-run = ["python3", "dashboard/app.py"]
+run = ["sh", "-c", "pip install flask && python3 dashboard/app.py"]
 deploymentTarget = "cloudrun"
 
 [[ports]]

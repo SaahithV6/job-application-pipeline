@@ -22,6 +22,13 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# ── Health Check ──
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "service": "job-tracker"})
+
+
 # ── Page Routes ──
 
 @app.route("/")
