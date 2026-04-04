@@ -1,0 +1,17 @@
+run = "python3 dashboard/app.py"
+entrypoint = "dashboard/app.py"
+
+[env]
+PORT = "5000"
+SECRET_KEY = "change-this-to-a-real-secret-key"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["python3", "dashboard/app.py"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
