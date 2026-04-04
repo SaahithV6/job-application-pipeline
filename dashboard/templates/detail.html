@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}{{ app.company }} - {{ app.role }} - Job Tracker{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/" class="text-sm text-indigo-600 hover:text-indigo-800">&larr; Back to Dashboard</a>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <div class="flex justify-between items-start">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ app.role }}</h1>
+            <p class="text-lg text-gray-600 mt-1">{{ app.company }}</p>
+        </div>
+        <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full status-{{ app.status }}" id="status-badge">
+            {{ app.status | title }}
+        </span>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        <div>
+            <h3 class="text-sm font-medium text-gray-500 uppercase mb-2">Details</h3>
+            <dl class="space-y-2">
+                <div>
+                    <dt class="text-xs text-gray-400">Date Applied</dt>
+                    <dd class="text-sm text-gray-900">{{ app.date_applied[:10] if app.date_applied else 'N/A' }}</dd>
+                </div>
+                {% if app.job_url %}
+                <div>
+                    <dt class="text-xs text-gray-400">Job Listing</dt>
+                    <dd><a href="{{ app.job_url }}" target="_blank" class="text-sm text-indigo-600 hover:underline">View on LinkedIn</a></dd>
+                </div>
+                {% endif %}
+                {% if app.apply_url and app.apply_url != app.job_url %}
+                <div>
+                    <dt class="text-xs text-gray-400">Application Page</dt>
+                    <dd><a href="{{ app.apply_url }}" target="_blank" class="text-sm text-indigo-600 hover:underline">View Application</a></dd>
+                </div>
+                {% endif %}
+                {% if app.interview_date %}
+                <div>
+                    <dt class="text-xs text-gray-400">Interview Date</dt>
+                    <dd class="text-sm text-gray-900">{{ app.interview_date }}</dd>
+                </div>
+                {% endif %}
+                {% if app.interview_link %}
+                <div>
+                    <dt class="text-xs text-gray-400">Interview Link</dt>
+                    <dd><a href="{{ app.interview_link }}" target="_blank" class="text-sm text-indigo-600 hover:underline">Join Meeting</a></dd>
+                </div>
+                {% endif %}
+                {% if app.browser_live_url %}
+                <div>
+                    <dt class="text-xs text-gray-400">Browser Session</dt>
+                    <dd><a href="{{ app.browser_live_url }}" target="_blank" class="text-sm text-indigo-600 hover:underline">View Recording</a></dd>
+                </div>
+                {% endif %}
+                <div>
+                    <dt class="text-xs text-gray-400">Last Updated</dt>
+                    <dd class="text-sm text-gray-900">{{ app.updated_at[:16] if app.updated_at else 'N/A' }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        <div>
+            <h3 class="text-sm font-medium text-gray-500 uppercase mb-2">Actions</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs text-gray-400">Update Status</label>
+                    <select id="status-select" onchange="updateStatus({{ app.id }})"
+                            class="mt-1 block w-full rounded-md border-gray-300 text-sm px-3 py-2 border focus:ring-indigo-500">
+                        <option value="applied" {% if app.status == 'applied' %}selected{% endif %}>Applied</option>
+                        <option value="interview" {% if app.status == 'interview' %}selected{% endif %}>Interview</option>
+                        <option value="offer" {% if app.status == 'offer' %}selected{% endif %}>Offer</option>
+                        <option value="rejected" {% if app.status == 'rejected' %}selected{% endif %}>Rejected</option>
+                        <option value="ghosted" {% if app.status == 'ghosted' %}selected{% endif %}>Ghosted</option>
+                        <option value="self_schedule" {% if app.status == 'self_schedule' %}selected{% endif %}>Self-Schedule</option>
+                    </select>
+                </div>
+
+                {% if app.status == 'self_schedule' %}
+                <a href="/schedule/{{ app.id }}" class="inline-block bg-purple-600 text-white px-4 py-2 rounded-md text-sm hover:bg-purple-700">
+                    Set Interview Times
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-500 uppercase mb-2">Notes</h3>
+        <textarea id="notes-input" rows="3"
+                  class="w-full rounded-md border-gray-300 text-sm p-3 border focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Add notes about this application...">{{ app.notes or '' }}</textarea>
+        <button onclick="updateNotes({{ app.id }})"
+                class="mt-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm hover:bg-gray-200">
+            Save Notes
+        </button>
+    </div>
+</div>
+
+<!-- Activity Log -->
+<div class="bg-white rounded-lg shadow p-6">
+    <h3 class="text-sm font-medium text-gray-500 uppercase mb-4">Activity Log</h3>
+    <div class="space-y-3">
+        {% for entry in log %}
+        <div class="flex items-start space-x-3">
+            <div class="flex-shrink-0 w-2 h-2 mt-2 rounded-full
+                {% if entry.action == 'applied' %}bg-green-500
+                {% elif entry.action == 'interview' %}bg-yellow-500
+                {% elif entry.action == 'offer' %}bg-blue-500
+                {% elif entry.action == 'rejected' %}bg-red-500
+                {% elif entry.action == 'ghosted' %}bg-gray-400
+                {% else %}bg-purple-500{% endif %}"></div>
+            <div>
+                <p class="text-sm text-gray-900">{{ entry.action | title }}</p>
+                <p class="text-xs text-gray-500">{{ entry.timestamp }}</p>
+                {% if entry.details %}
+                <p class="text-xs text-gray-400 mt-1">{{ entry.details[:200] }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% if not log %}
+        <p class="text-sm text-gray-500">No activity recorded yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function updateStatus(id) {
+    const status = document.getElementById('status-select').value;
+    await apiCall(`/api/applications/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+    });
+    window.location.reload();
+}
+
+async function updateNotes(id) {
+    const notes = document.getElementById('notes-input').value;
+    await apiCall(`/api/applications/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notes }),
+    });
+    alert('Notes saved!');
+}
+</script>
+{% endblock %}
