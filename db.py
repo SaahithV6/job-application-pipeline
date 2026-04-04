@@ -46,10 +46,28 @@ CREATE TABLE IF NOT EXISTS application_log (
     FOREIGN KEY (application_id) REFERENCES applications(id)
 );
 
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_type TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    jobs_found INTEGER DEFAULT 0,
+    jobs_applied INTEGER DEFAULT 0,
+    jobs_failed INTEGER DEFAULT 0,
+    emails_checked INTEGER DEFAULT 0,
+    status_updates INTEGER DEFAULT 0,
+    interviews_found INTEGER DEFAULT 0,
+    ghosted_count INTEGER DEFAULT 0,
+    error_message TEXT,
+    details TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_applications_company ON applications(company);
 CREATE INDEX IF NOT EXISTS idx_applications_date ON applications(date_applied);
 CREATE INDEX IF NOT EXISTS idx_log_app_id ON application_log(application_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started ON pipeline_runs(started_at);
 """
 
 DEFAULT_CONFIG = {
@@ -270,6 +288,61 @@ def get_stats():
         "this_week": week_count,
         "max_per_day": int(get_config("max_applications_per_day") or 5),
     }
+
+
+# ── Pipeline Run Tracking ──
+
+def add_pipeline_run(run_type, started_at, finished_at=None, status="running",
+                     jobs_found=0, jobs_applied=0, jobs_failed=0,
+                     emails_checked=0, status_updates=0, interviews_found=0,
+                     ghosted_count=0, error_message=None, details=None):
+    with get_db() as conn:
+        cur = conn.execute(
+            """INSERT INTO pipeline_runs
+               (run_type, started_at, finished_at, status, jobs_found, jobs_applied,
+                jobs_failed, emails_checked, status_updates, interviews_found,
+                ghosted_count, error_message, details)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (run_type, started_at, finished_at, status, jobs_found, jobs_applied,
+             jobs_failed, emails_checked, status_updates, interviews_found,
+             ghosted_count, error_message,
+             json.dumps(details) if details and not isinstance(details, str) else details),
+        )
+        return cur.lastrowid
+
+
+def update_pipeline_run(run_id, **kwargs):
+    allowed = {
+        "finished_at", "status", "jobs_found", "jobs_applied", "jobs_failed",
+        "emails_checked", "status_updates", "interviews_found", "ghosted_count",
+        "error_message", "details",
+    }
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if "details" in updates and not isinstance(updates["details"], str):
+        updates["details"] = json.dumps(updates["details"])
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [run_id]
+    with get_db() as conn:
+        conn.execute(f"UPDATE pipeline_runs SET {set_clause} WHERE id = ?", values)
+    return True
+
+
+def get_pipeline_runs(limit=20):
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_latest_pipeline_run():
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
 
 
 # Initialize on import

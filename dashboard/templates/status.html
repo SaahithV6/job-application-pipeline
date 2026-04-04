@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Pipeline Status - Job Tracker{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-900 mb-6">Pipeline Status</h1>
+
+<!-- Status Indicator -->
+<div class="bg-white rounded-lg shadow p-6 mb-6" id="status-card">
+    {% if latest %}
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+            <div id="status-dot" class="w-4 h-4 rounded-full
+                {% if latest.status == 'success' %}bg-green-500
+                {% elif latest.status == 'running' %}bg-yellow-500 animate-pulse
+                {% else %}bg-red-500{% endif %}"></div>
+            <div>
+                <p class="text-lg font-semibold text-gray-900" id="status-text">
+                    {% if latest.status == 'success' %}Pipeline Healthy
+                    {% elif latest.status == 'running' %}Pipeline Running
+                    {% else %}Pipeline Error{% endif %}
+                </p>
+                <p class="text-sm text-gray-500" id="last-run-time">
+                    Last run: {{ latest.finished_at or latest.started_at }}
+                    &middot; Type: {{ latest.run_type }}
+                </p>
+            </div>
+        </div>
+        <div class="text-right">
+            <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full
+                {% if latest.status == 'success' %}bg-green-100 text-green-800
+                {% elif latest.status == 'running' %}bg-yellow-100 text-yellow-800
+                {% else %}bg-red-100 text-red-800{% endif %}"
+                id="status-badge">
+                {{ latest.status | upper }}
+            </span>
+        </div>
+    </div>
+    {% if latest.error_message %}
+    <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+        <p class="text-sm text-red-700">{{ latest.error_message }}</p>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="flex items-center space-x-4">
+        <div class="w-4 h-4 rounded-full bg-gray-300"></div>
+        <div>
+            <p class="text-lg font-semibold text-gray-500">No runs yet</p>
+            <p class="text-sm text-gray-400">The pipeline hasn't executed yet. It runs daily on schedule.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Last Run Metrics -->
+{% if latest %}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-indigo-600">{{ latest.jobs_found }}</div>
+        <div class="text-xs text-gray-500 mt-1">Jobs Found</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-green-600">{{ latest.jobs_applied }}</div>
+        <div class="text-xs text-gray-500 mt-1">Applied</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-red-600">{{ latest.jobs_failed }}</div>
+        <div class="text-xs text-gray-500 mt-1">Failed</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ latest.emails_checked }}</div>
+        <div class="text-xs text-gray-500 mt-1">Emails Checked</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-purple-600">{{ latest.status_updates }}</div>
+        <div class="text-xs text-gray-500 mt-1">Status Updates</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-yellow-600">{{ latest.interviews_found }}</div>
+        <div class="text-xs text-gray-500 mt-1">Interviews</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-gray-400">{{ latest.ghosted_count }}</div>
+        <div class="text-xs text-gray-500 mt-1">Ghosted</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-2xl font-bold text-gray-900">{{ stats.today }}/{{ stats.max_per_day }}</div>
+        <div class="text-xs text-gray-500 mt-1">Today's Quota</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Run History -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Run History</h2>
+    </div>
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Found</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Applied</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Emails</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Error</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for run in runs %}
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {{ run.started_at[:16] if run.started_at else 'N/A' }}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full
+                        {% if run.run_type == 'full' %}bg-indigo-100 text-indigo-800
+                        {% elif run.run_type == 'discovery' %}bg-blue-100 text-blue-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ run.run_type }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                        {% if run.status == 'success' %}bg-green-100 text-green-800
+                        {% elif run.status == 'running' %}bg-yellow-100 text-yellow-800
+                        {% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ run.status }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ run.jobs_found }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ run.jobs_applied }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ run.emails_checked }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-red-500 truncate max-w-xs">
+                    {{ run.error_message[:60] if run.error_message else '-' }}
+                </td>
+            </tr>
+            {% endfor %}
+            {% if not runs %}
+            <tr>
+                <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                    No pipeline runs recorded yet. The pipeline runs daily on schedule.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<p class="text-xs text-gray-400 mt-4 text-center" id="refresh-note">Auto-refreshes every 60 seconds</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh every 60 seconds
+setInterval(() => {
+    window.location.reload();
+}, 60000);
+
+// Show relative time for last run
+{% if latest %}
+(function() {
+    const ts = "{{ latest.finished_at or latest.started_at }}";
+    if (!ts) return;
+    const d = new Date(ts + (ts.includes('T') ? '' : 'T00:00:00') + 'Z');
+    const now = new Date();
+    const diff = Math.floor((now - d) / 1000);
+    let ago;
+    if (diff < 60) ago = diff + 's ago';
+    else if (diff < 3600) ago = Math.floor(diff/60) + 'm ago';
+    else if (diff < 86400) ago = Math.floor(diff/3600) + 'h ago';
+    else ago = Math.floor(diff/86400) + 'd ago';
+    document.getElementById('last-run-time').innerHTML =
+        'Last run: <strong>' + ago + '</strong> &middot; Type: {{ latest.run_type }}';
+
+    // Color the status dot based on recency
+    const dot = document.getElementById('status-dot');
+    if (diff > 172800) { // >48h
+        dot.className = 'w-4 h-4 rounded-full bg-red-500';
+        document.getElementById('status-text').textContent = 'Pipeline Stale';
+    } else if (diff > 86400) { // >24h
+        dot.className = 'w-4 h-4 rounded-full bg-yellow-500';
+        document.getElementById('status-text').textContent = 'Pipeline Overdue';
+    }
+})();
+{% endif %}
+</script>
+{% endblock %}

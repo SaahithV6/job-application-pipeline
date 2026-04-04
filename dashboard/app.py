@@ -70,6 +70,14 @@ def schedule_interview(app_id):
     return render_template("schedule.html", app=application)
 
 
+@app.route("/status")
+def pipeline_status():
+    latest = db.get_latest_pipeline_run()
+    runs = db.get_pipeline_runs(limit=20)
+    stats = db.get_stats()
+    return render_template("status.html", latest=latest, runs=runs, stats=stats)
+
+
 # ── API Routes ──
 
 @app.route("/api/applications")
@@ -233,6 +241,39 @@ def api_sync_bulk():
                              (app_data["date_applied"], app_id))
         results.append({"action": "created", "id": app_id})
     return jsonify({"success": True, "synced": len(results), "results": results})
+
+
+@app.route("/api/pipeline/status")
+def api_pipeline_status():
+    latest = db.get_latest_pipeline_run()
+    runs = db.get_pipeline_runs(limit=20)
+    return jsonify({"latest": latest, "runs": runs})
+
+
+@app.route("/api/sync/pipeline-run", methods=["POST"])
+def api_sync_pipeline_run():
+    """Receive a pipeline run report from the Pokee sandbox."""
+    if not _check_sync_key():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data"}), 400
+    run_id = db.add_pipeline_run(
+        run_type=data.get("run_type", "full"),
+        started_at=data.get("started_at", ""),
+        finished_at=data.get("finished_at"),
+        status=data.get("status", "success"),
+        jobs_found=data.get("jobs_found", 0),
+        jobs_applied=data.get("jobs_applied", 0),
+        jobs_failed=data.get("jobs_failed", 0),
+        emails_checked=data.get("emails_checked", 0),
+        status_updates=data.get("status_updates", 0),
+        interviews_found=data.get("interviews_found", 0),
+        ghosted_count=data.get("ghosted_count", 0),
+        error_message=data.get("error_message"),
+        details=data.get("details"),
+    )
+    return jsonify({"success": True, "id": run_id})
 
 
 if __name__ == "__main__":

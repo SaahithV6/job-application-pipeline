@@ -109,12 +109,15 @@ def run_email_monitor():
 
 def run_full_pipeline(dry_run=False):
     """Run the complete daily pipeline."""
+    started_at = datetime.utcnow().isoformat()
     print("=" * 60)
     print("JOB APPLICATION PIPELINE - FULL RUN")
     print(f"Date: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
     print("=" * 60)
 
     results = {}
+    run_status = "success"
+    error_msg = None
 
     # Phase 1: Discover and apply
     try:
@@ -122,6 +125,8 @@ def run_full_pipeline(dry_run=False):
     except Exception as e:
         print(f"\nERROR in Phase 1: {e}")
         results["discovery"] = {"error": str(e)}
+        run_status = "error"
+        error_msg = f"Phase 1: {e}"
 
     # Phase 2: Monitor emails
     try:
@@ -129,6 +134,8 @@ def run_full_pipeline(dry_run=False):
     except Exception as e:
         print(f"\nERROR in Phase 2: {e}")
         results["monitoring"] = {"error": str(e)}
+        run_status = "error"
+        error_msg = (error_msg + "; " if error_msg else "") + f"Phase 2: {e}"
 
     # Summary
     print("\n" + "=" * 60)
@@ -147,6 +154,24 @@ def run_full_pipeline(dry_run=False):
         sync_to_replit()
     except Exception as e:
         print(f"  Sync error: {e}")
+
+    # Sync pipeline run status
+    disc = results.get("discovery", {})
+    mon = results.get("monitoring", {}).get("monitor", {})
+    sync_pipeline_run({
+        "run_type": "full",
+        "started_at": started_at,
+        "finished_at": datetime.utcnow().isoformat(),
+        "status": run_status,
+        "jobs_found": disc.get("jobs_found", 0),
+        "jobs_applied": disc.get("applied", 0),
+        "jobs_failed": disc.get("failed", 0),
+        "emails_checked": mon.get("emails_checked", 0),
+        "status_updates": len(mon.get("status_updates", [])),
+        "interviews_found": len(mon.get("interviews_found", [])),
+        "ghosted_count": mon.get("ghosted_count", 0),
+        "error_message": error_msg,
+    })
 
     return results
 
@@ -173,6 +198,29 @@ def sync_to_replit():
         print(f"  Synced {resp.get('synced', 0)} applications to Replit dashboard")
     except Exception as e:
         print(f"  Sync failed: {e}")
+
+
+def sync_pipeline_run(run_data):
+    """Push a pipeline run report to the Replit dashboard."""
+    if not REPLIT_DASHBOARD_URL:
+        return
+    url = f"{REPLIT_DASHBOARD_URL.rstrip('/')}/api/sync/pipeline-run"
+    payload = json.dumps(run_data, default=str)
+    cmd = [
+        "curl", "-s", "-X", "POST", url,
+        "-H", "Content-Type: application/json",
+        "-H", f"X-Sync-Key: {SYNC_API_KEY}",
+        "-d", payload,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        resp = json.loads(result.stdout) if result.stdout else {}
+        if resp.get("success"):
+            print(f"  Pipeline run status synced (id={resp.get('id')})")
+        else:
+            print(f"  Pipeline run sync response: {resp}")
+    except Exception as e:
+        print(f"  Pipeline run sync error: {e}")
 
 
 def run_monitor_only():
