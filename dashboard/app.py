@@ -243,6 +243,21 @@ def api_sync_bulk():
     return jsonify({"success": True, "synced": len(results), "results": results})
 
 
+@app.route("/api/pipeline/sessions")
+def api_pipeline_sessions():
+    """Return recent applications that have Browser Use session URLs."""
+    with db.get_db() as conn:
+        rows = conn.execute(
+            """SELECT id, company, role, date_applied, status, browser_session_id,
+                      browser_live_url, updated_at
+               FROM applications
+               WHERE browser_live_url IS NOT NULL AND browser_live_url != ''
+               ORDER BY date_applied DESC LIMIT 20""",
+        ).fetchall()
+        sessions = [dict(r) for r in rows]
+    return jsonify({"sessions": sessions})
+
+
 @app.route("/api/pipeline/status")
 def api_pipeline_status():
     latest = db.get_latest_pipeline_run()

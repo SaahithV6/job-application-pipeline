@@ -89,6 +89,17 @@
 </div>
 {% endif %}
 
+<!-- Active Browser Sessions -->
+<div class="bg-white rounded-lg shadow p-6 mb-6" id="active-sessions">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">Browser Use Sessions</h2>
+        <span class="text-xs text-gray-400" id="sessions-refresh">Auto-refreshes every 10s</span>
+    </div>
+    <div id="sessions-list">
+        <p class="text-sm text-gray-500">Loading sessions...</p>
+    </div>
+</div>
+
 <!-- Run History -->
 <div class="bg-white rounded-lg shadow overflow-hidden">
     <div class="px-6 py-4 border-b border-gray-200">
@@ -152,37 +163,84 @@
 
 {% block scripts %}
 <script>
-// Auto-refresh every 60 seconds
-setInterval(() => {
-    window.location.reload();
-}, 60000);
+// Auto-refresh page every 60 seconds
+setInterval(() => { window.location.reload(); }, 60000);
+
+// Relative time helper
+function timeAgo(ts) {
+    if (!ts) return '';
+    const d = new Date(ts + (ts.includes('T') ? '' : 'T00:00:00') + 'Z');
+    const diff = Math.floor((new Date() - d) / 1000);
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    return Math.floor(diff/86400) + 'd ago';
+}
 
 // Show relative time for last run
 {% if latest %}
 (function() {
     const ts = "{{ latest.finished_at or latest.started_at }}";
     if (!ts) return;
-    const d = new Date(ts + (ts.includes('T') ? '' : 'T00:00:00') + 'Z');
-    const now = new Date();
-    const diff = Math.floor((now - d) / 1000);
-    let ago;
-    if (diff < 60) ago = diff + 's ago';
-    else if (diff < 3600) ago = Math.floor(diff/60) + 'm ago';
-    else if (diff < 86400) ago = Math.floor(diff/3600) + 'h ago';
-    else ago = Math.floor(diff/86400) + 'd ago';
+    const ago = timeAgo(ts);
     document.getElementById('last-run-time').innerHTML =
         'Last run: <strong>' + ago + '</strong> &middot; Type: {{ latest.run_type }}';
 
-    // Color the status dot based on recency
+    const d = new Date(ts + (ts.includes('T') ? '' : 'T00:00:00') + 'Z');
+    const diff = Math.floor((new Date() - d) / 1000);
     const dot = document.getElementById('status-dot');
-    if (diff > 172800) { // >48h
+    if (diff > 172800) {
         dot.className = 'w-4 h-4 rounded-full bg-red-500';
         document.getElementById('status-text').textContent = 'Pipeline Stale';
-    } else if (diff > 86400) { // >24h
+    } else if (diff > 86400) {
         dot.className = 'w-4 h-4 rounded-full bg-yellow-500';
         document.getElementById('status-text').textContent = 'Pipeline Overdue';
     }
 })();
 {% endif %}
+
+// Poll for active browser sessions
+async function loadSessions() {
+    try {
+        const resp = await fetch('/api/pipeline/sessions');
+        const data = await resp.json();
+        const el = document.getElementById('sessions-list');
+        const sessions = data.sessions || [];
+        if (sessions.length === 0) {
+            el.innerHTML = '<p class="text-sm text-gray-400">No recent browser sessions.</p>';
+            return;
+        }
+        let html = '<div class="space-y-3">';
+        sessions.forEach(s => {
+            const isActive = !s.finished_at || (Date.now() - new Date(s.date_applied + 'Z')) < 600000;
+            const dotClass = isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-300';
+            const label = isActive ? 'Live' : timeAgo(s.date_applied);
+            html += `
+            <div class="flex items-center justify-between p-3 rounded-lg border ${isActive ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50'}">
+                <div class="flex items-center space-x-3">
+                    <div class="w-3 h-3 rounded-full ${dotClass}"></div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">${s.company} &mdash; ${s.role}</p>
+                        <p class="text-xs text-gray-500">${label}</p>
+                    </div>
+                </div>
+                <a href="${s.browser_live_url}" target="_blank"
+                   class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md ${isActive ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    ${isActive ? 'Watch Live' : 'View Recording'}
+                </a>
+            </div>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) {
+        document.getElementById('sessions-list').innerHTML =
+            '<p class="text-sm text-gray-400">Could not load sessions.</p>';
+    }
+}
+loadSessions();
+setInterval(loadSessions, 10000);
 </script>
 {% endblock %}
