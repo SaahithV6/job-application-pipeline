@@ -1,6 +1,6 @@
 { pkgs }: {
   deps = [
-    pkgs.python310
-    pkgs.python310Packages.flask
+    pkgs.python311
+    pkgs.python311Packages.flask
   ];
 }
