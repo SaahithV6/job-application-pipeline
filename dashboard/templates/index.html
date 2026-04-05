@@ -85,7 +85,9 @@
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full status-{{ app.status }}">
-                        {% if app.status == 'applied' %}Applied
+                        {% if app.status == 'queued' %}Queued
+                        {% elif app.status == 'applying' %}Applying...
+                        {% elif app.status == 'applied' %}Applied
                         {% elif app.status == 'ghosted' %}Ghosted
                         {% elif app.status == 'rejected' %}Rejected
                         {% elif app.status == 'interview' %}Interview

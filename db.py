@@ -84,7 +84,7 @@ DEFAULT_CONFIG = {
     "education_summary": "",
 }
 
-VALID_STATUSES = {"applied", "ghosted", "rejected", "interview", "offer", "self_schedule"}
+VALID_STATUSES = {"queued", "applying", "applied", "ghosted", "rejected", "interview", "offer", "self_schedule"}
 
 
 @contextmanager

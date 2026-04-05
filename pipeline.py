@@ -35,7 +35,7 @@ def run_discovery_and_apply(dry_run=False):
         return {"phase": "discovery", "skipped": True, "reason": "limit_reached"}
 
     # Discover
-    print("[1/2] Discovering jobs...")
+    print("[1/3] Discovering jobs...")
     discovery = discover_jobs()
     print(f"  Found {len(discovery.get('jobs', []))} new jobs (after dedup)")
 
@@ -43,8 +43,17 @@ def run_discovery_and_apply(dry_run=False):
         print("  No new jobs found.")
         return {"phase": "discovery", "jobs_found": 0}
 
+    # Queue — push discovered jobs to dashboard so user can see them
+    print(f"\n[2/3] Queueing {len(discovery['jobs'])} jobs on dashboard...")
+    for job in discovery["jobs"]:
+        try:
+            sync_queued_job(job)
+            print(f"  Queued: {job.get('company', '?')} - {job.get('job_title', '?')}")
+        except Exception as e:
+            print(f"  Queue sync error: {e}")
+
     # Apply
-    print(f"\n[2/2] Applying to {len(discovery['jobs'])} jobs...")
+    print(f"\n[3/3] Applying to {len(discovery['jobs'])} jobs via Browser Use...")
     if dry_run:
         print("  DRY RUN - forms will be filled but NOT submitted")
 
@@ -174,6 +183,47 @@ def run_full_pipeline(dry_run=False):
     })
 
     return results
+
+
+def _sync_post(endpoint, data):
+    """POST JSON to a Replit dashboard endpoint."""
+    if not REPLIT_DASHBOARD_URL:
+        return {}
+    url = f"{REPLIT_DASHBOARD_URL.rstrip('/')}{endpoint}"
+    payload = json.dumps(data, default=str)
+    cmd = [
+        "curl", "-s", "-X", "POST", url,
+        "-H", "Content-Type: application/json",
+        "-H", f"X-Sync-Key: {SYNC_API_KEY}",
+        "-d", payload,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        return json.loads(result.stdout) if result.stdout else {}
+    except Exception:
+        return {}
+
+
+def sync_queued_job(job):
+    """Push a discovered job to the dashboard as 'queued' so the user can see it."""
+    return _sync_post("/api/sync/application", {
+        "company": job.get("company", "Unknown"),
+        "role": job.get("job_title", "Unknown"),
+        "job_url": job.get("job_url", ""),
+        "apply_url": job.get("apply_url", ""),
+        "status": "queued",
+        "notes": f"Source: {job.get('source', 'discovery')}\nDescription: {job.get('description', '')[:300]}",
+    })
+
+
+def sync_applying_job(job_url, browser_session_id, browser_live_url):
+    """Update a queued job on the dashboard to 'applying' with the Browser Use live URL."""
+    return _sync_post("/api/sync/application", {
+        "job_url": job_url,
+        "status": "applying",
+        "browser_session_id": browser_session_id,
+        "browser_live_url": browser_live_url,
+    })
 
 
 def sync_to_replit():

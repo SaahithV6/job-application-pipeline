@@ -187,7 +187,8 @@ def api_sync_application():
             if row:
                 db.update_application(row["id"], **{k: v for k, v in data.items()
                                                      if k in ("status", "notes", "interview_date",
-                                                              "interview_link", "calendar_event_id")})
+                                                              "interview_link", "calendar_event_id",
+                                                              "browser_session_id", "browser_live_url")})
                 return jsonify({"success": True, "action": "updated", "id": row["id"]})
     # Insert new
     app_id = db.add_application(
@@ -256,6 +257,21 @@ def api_pipeline_sessions():
         ).fetchall()
         sessions = [dict(r) for r in rows]
     return jsonify({"sessions": sessions})
+
+
+@app.route("/api/pipeline/queue")
+def api_pipeline_queue():
+    """Return jobs currently queued or being applied to via Browser Use."""
+    with db.get_db() as conn:
+        rows = conn.execute(
+            """SELECT id, company, role, job_url, apply_url, status,
+                      browser_session_id, browser_live_url, date_applied, notes
+               FROM applications
+               WHERE status IN ('queued', 'applying')
+               ORDER BY date_applied DESC LIMIT 20""",
+        ).fetchall()
+        queue = [dict(r) for r in rows]
+    return jsonify({"queue": queue})
 
 
 @app.route("/api/pipeline/status")

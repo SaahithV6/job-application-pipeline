@@ -274,6 +274,20 @@ def apply_to_job(job, dry_run=False):
     print(f"  Launching Browser Use session...")
     result = _run_browser_task(prompt, timeout_seconds=300, workspace_id=workspace_id)
 
+    # ── Sync live URL to dashboard so user can watch ──
+    if result.get("session_id") or result.get("live_url"):
+        try:
+            from pipeline import sync_applying_job
+            sync_applying_job(
+                job_url=job.get("job_url", ""),
+                browser_session_id=result.get("session_id", ""),
+                browser_live_url=result.get("live_url", ""),
+            )
+            if result.get("live_url"):
+                print(f"  Watch live: {result['live_url']}")
+        except Exception:
+            pass  # Non-critical — don't break the apply flow
+
     if result.get("error"):
         return {
             "success": False,

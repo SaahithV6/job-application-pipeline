@@ -89,14 +89,25 @@
 </div>
 {% endif %}
 
-<!-- Active Browser Sessions -->
+<!-- Job Queue & Live Activity -->
+<div class="bg-white rounded-lg shadow p-6 mb-6" id="live-activity">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-900">Job Queue &amp; Live Activity</h2>
+        <span class="text-xs text-gray-400" id="queue-refresh">Auto-refreshes every 5s</span>
+    </div>
+    <div id="queue-list">
+        <p class="text-sm text-gray-500">Loading...</p>
+    </div>
+</div>
+
+<!-- Browser Use Sessions (completed) -->
 <div class="bg-white rounded-lg shadow p-6 mb-6" id="active-sessions">
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-900">Browser Use Sessions</h2>
-        <span class="text-xs text-gray-400" id="sessions-refresh">Auto-refreshes every 10s</span>
+        <span class="text-xs text-gray-400">Completed sessions with recordings</span>
     </div>
     <div id="sessions-list">
-        <p class="text-sm text-gray-500">Loading sessions...</p>
+        <p class="text-sm text-gray-500">Loading...</p>
     </div>
 </div>
 
@@ -199,7 +210,69 @@ function timeAgo(ts) {
 })();
 {% endif %}
 
-// Poll for active browser sessions
+// Poll for job queue (queued + applying)
+async function loadQueue() {
+    try {
+        const resp = await fetch('/api/pipeline/queue');
+        const data = await resp.json();
+        const el = document.getElementById('queue-list');
+        const queue = data.queue || [];
+        if (queue.length === 0) {
+            el.innerHTML = '<p class="text-sm text-gray-400">No jobs in queue. Jobs appear here when the pipeline discovers and applies to them.</p>';
+            return;
+        }
+        let html = '<div class="space-y-3">';
+        queue.forEach((j, idx) => {
+            const isApplying = j.status === 'applying';
+            const isQueued = j.status === 'queued';
+            const dotClass = isApplying ? 'bg-green-500 animate-pulse' : 'bg-yellow-400';
+            const borderClass = isApplying ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50';
+            const statusLabel = isApplying ? 'Browser Use is filling this application...' : `Queued (#${idx + 1})`;
+            const statusBadge = isApplying
+                ? '<span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">APPLYING</span>'
+                : '<span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">QUEUED</span>';
+
+            html += `
+            <div class="p-4 rounded-lg border ${borderClass}">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-3 h-3 rounded-full ${dotClass}"></div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">${j.company} &mdash; ${j.role}</p>
+                            <p class="text-xs text-gray-500">${statusLabel}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        ${statusBadge}`;
+            if (isApplying && j.browser_live_url) {
+                html += `
+                        <a href="${j.browser_live_url}" target="_blank"
+                           class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-700">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                            Watch Live
+                        </a>`;
+            }
+            html += `
+                    </div>
+                </div>`;
+            if (j.job_url) {
+                html += `<p class="text-xs text-gray-400 truncate ml-6">${j.job_url}</p>`;
+            }
+            html += `</div>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) {
+        document.getElementById('queue-list').innerHTML =
+            '<p class="text-sm text-gray-400">Could not load queue.</p>';
+    }
+}
+loadQueue();
+setInterval(loadQueue, 5000);
+
+// Poll for completed browser sessions
 async function loadSessions() {
     try {
         const resp = await fetch('/api/pipeline/sessions');
@@ -207,29 +280,26 @@ async function loadSessions() {
         const el = document.getElementById('sessions-list');
         const sessions = data.sessions || [];
         if (sessions.length === 0) {
-            el.innerHTML = '<p class="text-sm text-gray-400">No recent browser sessions.</p>';
+            el.innerHTML = '<p class="text-sm text-gray-400">No browser sessions yet. Sessions appear after the pipeline applies to jobs.</p>';
             return;
         }
-        let html = '<div class="space-y-3">';
+        let html = '<div class="space-y-2">';
         sessions.forEach(s => {
-            const isActive = !s.finished_at || (Date.now() - new Date(s.date_applied + 'Z')) < 600000;
-            const dotClass = isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-300';
-            const label = isActive ? 'Live' : timeAgo(s.date_applied);
             html += `
-            <div class="flex items-center justify-between p-3 rounded-lg border ${isActive ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50'}">
+            <div class="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50">
                 <div class="flex items-center space-x-3">
-                    <div class="w-3 h-3 rounded-full ${dotClass}"></div>
+                    <div class="w-3 h-3 rounded-full bg-gray-300"></div>
                     <div>
                         <p class="text-sm font-medium text-gray-900">${s.company} &mdash; ${s.role}</p>
-                        <p class="text-xs text-gray-500">${label}</p>
+                        <p class="text-xs text-gray-500">${timeAgo(s.date_applied)}</p>
                     </div>
                 </div>
                 <a href="${s.browser_live_url}" target="_blank"
-                   class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md ${isActive ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
+                   class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300">
                     <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
                     </svg>
-                    ${isActive ? 'Watch Live' : 'View Recording'}
+                    View Recording
                 </a>
             </div>`;
         });
